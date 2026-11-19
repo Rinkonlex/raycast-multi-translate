@@ -40,6 +40,10 @@ Support translating up to 7 languages at once. Options can be found in the exten
 
 <img width="1112" src="https://github.com/antfu/raycast-multi-translate/assets/11247099/797a83ea-6013-4cef-82fe-dfc5d309aada">
 
+### Translation Providers
+
+By default, translations are done by Google Translate. You can switch the **Translation Provider** preference to **DeepL** and provide your own DeepL API key (BYOK) in the **DeepL API Key** preference. Keys of the DeepL API Free plan end with `:fx` and are routed to the free API endpoint automatically. Target languages that DeepL does not support fall back to Google Translate.
+
 ### Spellcheck
 
 When you misspell some words, an additional item will be listed, with diffing support to help you find the correct spelling easier.

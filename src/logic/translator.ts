@@ -1,7 +1,9 @@
-import googleTranslate from '@iamtraction/google-translate'
-import { LRUCache } from 'lru-cache'
 import type { LanguageCode } from '../data/languages'
 import type { TranslateResult } from '../types'
+import googleTranslate from '@iamtraction/google-translate'
+import { getPreferenceValues } from '@raycast/api'
+import { LRUCache } from 'lru-cache'
+import { getDeepLTargetLanguage, translateWithDeepL } from './providers/deepl'
 
 export const AUTO_DETECT = 'auto'
 
@@ -22,6 +24,35 @@ export class TranslateError extends Error {
   }
 }
 
+async function translateWithGoogle(text: string, from: LanguageCode, to: LanguageCode): Promise<TranslateResult> {
+  const translated = await googleTranslate(text, {
+    from,
+    to,
+  })
+
+  return {
+    original: text,
+    translated: translated.text,
+    from: translated?.from?.language?.didYouMean
+      ? from
+      : translated?.from?.language?.iso as LanguageCode,
+    to,
+  }
+}
+
+async function translateWithDeepLProvider(text: string, from: LanguageCode, to: LanguageCode, apiKey: string): Promise<TranslateResult> {
+  const translated = await translateWithDeepL(text, from, to, apiKey)
+
+  return {
+    original: text,
+    translated: translated.text,
+    from: from === 'auto'
+      ? translated.detectedFrom ?? from
+      : from,
+    to,
+  }
+}
+
 export async function translate(text: string, from: LanguageCode, to: LanguageCode): Promise<TranslateResult> {
   if (!text) {
     return {
@@ -32,25 +63,33 @@ export async function translate(text: string, from: LanguageCode, to: LanguageCo
     }
   }
 
-  const key = `${from}:${to}:${text}`
+  const preferences = getPreferenceValues<Preferences.Translate>()
+  const useDeepL = preferences.translationProvider === 'deepl'
+  const deeplApiKey = preferences.deeplApiKey?.trim()
+
+  const key = `${useDeepL ? 'deepl' : 'google'}:${from}:${to}:${text}`
   const cached = cache.get(key)
   if (cached)
     return cached
 
   try {
-    const translated = await googleTranslate(text, {
-      from,
-      to,
-    })
+    let result: TranslateResult
 
-    const result = {
-      original: text,
-      translated: translated.text,
-      from: translated?.from?.language?.didYouMean
-        ? from
-        : translated?.from?.language?.iso as LanguageCode,
-      to,
+    if (useDeepL) {
+      if (!deeplApiKey)
+        throw new TranslateError('please set your DeepL API key in the extension preferences', 'DeepL API key missing')
+
+      // DeepL does not cover every language of this extension. Fall back to
+      // Google Translate for target languages DeepL does not support, so a
+      // multi-translate run still returns a result for every language.
+      result = getDeepLTargetLanguage(to)
+        ? await translateWithDeepLProvider(text, from, to, deeplApiKey)
+        : await translateWithGoogle(text, from, to)
     }
+    else {
+      result = await translateWithGoogle(text, from, to)
+    }
+
     cache.set(key, result)
     return result
   }
